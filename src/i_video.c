@@ -783,7 +783,6 @@ uint8_t buffer[320*200];
 void floyd_steinberg_dither(SDL_Surface *s){
     int x,y;
     uint8_t r, g, b;
-    uint8_t newr, newg, newb;
     uint8_t newpixel, oldpixel;
 
     // it makes more sense to dither on an uint8_t array and then repaint back to SDL_Surface
@@ -791,13 +790,14 @@ void floyd_steinberg_dither(SDL_Surface *s){
 
     int8_t quant_error;
     int8_t ea, eb, ec, ed;
+    float in;
     
     for(y = 0; y < s->h; y++){
         for(x = 0; x < s->w; x++){
             uint32_t pix = getpixel(s, x, y);
             SDL_GetRGB(pix, s->format, &r, &g, &b);
             // Convert the pixel value to grayscale i.e. intensity
-            float in = .299f * r + .587f * g + .114f * b;         
+            in = .299f * r + .587f * g + .114f * b;         
             oldpixel = (uint8_t)(in * 255);
             //store in the intermediate array
             buffer[y*s->w + x] = oldpixel;
@@ -820,11 +820,11 @@ void floyd_steinberg_dither(SDL_Surface *s){
             if(x != s->w - 1)
                 buffer[y*s->w + (x+1)] = saturated_add(buffer[y*s->w + (x+1)], ea);
              if(x != 0 || y != s->h -1)
-                buffer[(y+1)*s->w + (x-1)] = saturated_add(buffer[(y+1)*s->w + (x-1)], ea);
+                buffer[(y+1)*s->w + (x-1)] = saturated_add(buffer[(y+1)*s->w + (x-1)], eb);
              if(y != s->h -1)
-                buffer[(y+1)*s->w + (x)] = saturated_add(buffer[(y+1)*s->w + (x)], ea);
+                buffer[(y+1)*s->w + (x)] = saturated_add(buffer[(y+1)*s->w + (x)], ec);
              if(x != s->w - 1 || y != s->h -1)
-                buffer[(y+1)*s->w + (x+1)] = saturated_add(buffer[(y+1)*s->w + (x+1)], ea);
+                buffer[(y+1)*s->w + (x+1)] = saturated_add(buffer[(y+1)*s->w + (x+1)], ed);
         }
     }
 
@@ -843,6 +843,7 @@ void floyd_steinberg_dither(SDL_Surface *s){
 //stolen from https://gist.github.com/catastropher/bd8182d0547e7f5e8184
 void black_white_dither(SDL_Surface* s) {
   int x, y;
+  float in;
   
   // Ordered dither kernel
   uint16_t map[8][8] = {
@@ -863,7 +864,7 @@ void black_white_dither(SDL_Surface* s) {
       SDL_GetRGB(pix, s->format, &r, &g, &b);
       
       // Convert the pixel value to grayscale i.e. intensity
-      float in = .299f * r + .587f * g + .114f * b;
+      in = .299f * r + .587f * g + .114f * b;
       
       // Apply the ordered dither kernel
       uint16_t val = in + in * map[y % 8][x % 8] / 64;
