@@ -40,6 +40,7 @@ typedef struct
 // List of aspect ratio-uncorrected window sizes:
 static window_size_t window_sizes_unscaled[] =
 {
+    { 120,  75 },
     { 320,  200 },
     { 640,  400 },
     { 960,  600 },
@@ -51,6 +52,7 @@ static window_size_t window_sizes_unscaled[] =
 // List of aspect ratio-corrected window sizes:
 static window_size_t window_sizes_scaled[] =
 {
+    { 120,  90  },
     { 320,  240 },
     { 512,  400 },
     { 640,  480 },
