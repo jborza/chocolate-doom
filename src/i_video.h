@@ -31,6 +31,8 @@
 
 #define SCREENHEIGHT_4_3 240
 
+#define GAMMA_WHITE_CUTOFF 160
+
 typedef boolean (*grabmouse_callback_t)(void);
 
 // Called by D_DoomMain,

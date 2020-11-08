@@ -742,6 +742,10 @@ static default_t extra_defaults_list[] =
 
     CONFIG_VARIABLE_INT(vga_porch_flash),
 
+    // If non-zero, enables dithering into black & white
+    CONFIG_VARIABLE_INT(dither),
+
+
     //!
     // Window width when running in windowed mode.
     //

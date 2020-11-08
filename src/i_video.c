@@ -140,6 +140,9 @@ int integer_scaling = false;
 
 int vga_porch_flash = false;
 
+// Dithering option
+int dither = true;
+
 // Force software rendering, for systems which lack effective hardware
 // acceleration
 
@@ -689,6 +692,111 @@ static void CreateUpscaledTexture(boolean force)
     }
 }
 
+Uint32 getpixel(SDL_Surface *surface, int x, int y)
+{
+    int bpp = surface->format->BytesPerPixel;
+    /* Here p is the address to the pixel we want to retrieve */
+    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+    switch(bpp) {
+    case 1:
+        return *p;
+        break;
+
+    case 2:
+        return *(Uint16 *)p;
+        break;
+
+    case 3:
+        if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            return p[0] << 16 | p[1] << 8 | p[2];
+        else
+            return p[0] | p[1] << 8 | p[2] << 16;
+        break;
+
+    case 4:
+        return *(Uint32 *)p;
+        break;
+
+    default:
+        return 0;       /* shouldn't happen, but avoids warnings */
+    }
+}
+
+void putpixel(SDL_Surface *surface, int x, int y, uint32_t pixel)
+{
+    int bpp = surface->format->BytesPerPixel;
+    /* Here p is the address to the pixel we want to set */
+    uint8_t *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+    switch(bpp) {
+    case 1:
+        *p = pixel;
+        break;
+
+    case 2:
+        *(uint16_t *)p = pixel;
+        break;
+
+    case 3:
+        if(SDL_BYTEORDER == SDL_BIG_ENDIAN) {
+            p[0] = (pixel >> 16) & 0xff;
+            p[1] = (pixel >> 8) & 0xff;
+            p[2] = pixel & 0xff;
+        } else {
+            p[0] = pixel & 0xff;
+            p[1] = (pixel >> 8) & 0xff;
+            p[2] = (pixel >> 16) & 0xff;
+        }
+        break;
+
+    case 4:
+        *(uint32_t *)p = pixel;
+        break;
+    }
+}
+
+//ordered 8x8 dithering
+//stolen from https://gist.github.com/catastropher/bd8182d0547e7f5e8184
+void black_white_dither(SDL_Surface* s) {
+  int x, y;
+  
+  // Ordered dither kernel
+  uint16_t map[8][8] = {
+    { 1, 49, 13, 61, 4, 52, 16, 64 },
+    { 33, 17, 45, 29, 36, 20, 48, 32 },
+    { 9, 57, 5, 53, 12, 60, 8, 56 },
+    { 41, 25, 37, 21, 44, 28, 40, 24 },
+    { 3, 51, 15, 63, 2, 50, 14, 62 },
+    { 25, 19, 47, 31, 34, 18, 46, 30 },
+    { 11, 59, 7, 55, 10, 58, 6, 54 },
+    { 43, 27, 39, 23, 42, 26, 38, 22 }
+  };
+  
+  for(y = 0; y < s->h; ++y) {
+    for(x = 0; x < s->w; ++x) {
+      uint32_t pix = getpixel(s, x, y);
+      uint8_t r, g, b;
+      SDL_GetRGB(pix, s->format, &r, &g, &b);
+      
+      // Convert the pixel value to grayscale i.e. intensity
+      float in = .299f * r + .587f * g + .114f * b;
+      
+      // Apply the ordered dither kernel
+      uint16_t val = in + in * map[y % 8][x % 8] / 64;
+      
+      // If >= 192 choose white, else choose black
+      if(val >= GAMMA_WHITE_CUTOFF) //TODO make this configurable
+        val = 255;
+      else
+        val = 0;
+      
+      // Put the pixel back in the image
+      putpixel(s, x, y, SDL_MapRGB(s->format, val, val, val));
+    }
+  }
+}
+
 //
 // I_FinishUpdate
 //
@@ -778,6 +886,10 @@ void I_FinishUpdate (void)
     // 32-bit RGBA buffer that we can load into the texture.
 
     SDL_LowerBlit(screenbuffer, &blit_rect, argbbuffer, &blit_rect);
+
+    // dither if this option is set
+    if(dither)
+        black_white_dither(argbbuffer);
 
     // Update the intermediate texture with the contents of the RGBA buffer.
 
@@ -1474,4 +1586,5 @@ void I_BindVideoVariables(void)
     M_BindStringVariable("window_position",        &window_position);
     M_BindIntVariable("usegamma",                  &usegamma);
     M_BindIntVariable("png_screenshots",           &png_screenshots);
+    M_BindIntVariable("dither",                    &dither);
 }
