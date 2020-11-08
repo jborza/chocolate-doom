@@ -756,6 +756,89 @@ void putpixel(SDL_Surface *surface, int x, int y, uint32_t pixel)
     }
 }
 
+uint8_t saturated_add(uint8_t val1, int8_t val2)
+{
+  int16_t val1_int = val1;
+  int16_t val2_int = val2;
+  int16_t tmp = val1_int + val2_int;
+
+  if(tmp > 255)
+  {
+    return 255;
+  }
+  else if(tmp < 0)
+  {   
+    return 0;
+  }
+  else
+  {
+    return tmp;
+  }
+}
+
+//static dithering buffer
+uint8_t buffer[320*200];
+
+//https://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering
+void floyd_steinberg_dither(SDL_Surface *s){
+    int x,y;
+    uint8_t r, g, b;
+    uint8_t newr, newg, newb;
+    uint8_t newpixel, oldpixel;
+
+    // it makes more sense to dither on an uint8_t array and then repaint back to SDL_Surface
+    // instead of operating on RGB pixels
+
+    int8_t quant_error;
+    int8_t ea, eb, ec, ed;
+    
+    for(y = 0; y < s->h; y++){
+        for(x = 0; x < s->w; x++){
+            uint32_t pix = getpixel(s, x, y);
+            SDL_GetRGB(pix, s->format, &r, &g, &b);
+            // Convert the pixel value to grayscale i.e. intensity
+            float in = .299f * r + .587f * g + .114f * b;         
+            oldpixel = (uint8_t)(in * 255);
+            //store in the intermediate array
+            buffer[y*s->w + x] = oldpixel;
+        }
+    }
+
+    //perform dithering
+    for(y = 0; y < s->h; y++){
+        for(x = 0; x < s->w; x++){
+            oldpixel =  buffer[y*s->w + x];
+            newpixel = oldpixel > 127 ? 0 : 255;
+            quant_error = oldpixel > 127 ? oldpixel - 255 : oldpixel;
+            buffer[y*s->w + x] = newpixel;
+
+            ea = (quant_error * 7) / 16;
+            eb = (quant_error * 1) / 16;
+            ec = (quant_error * 5) / 16;
+            ed = (quant_error * 3) / 16;
+            
+            if(x != s->w - 1)
+                buffer[y*s->w + (x+1)] = saturated_add(buffer[y*s->w + (x+1)], ea);
+             if(x != 0 || y != s->h -1)
+                buffer[(y+1)*s->w + (x-1)] = saturated_add(buffer[(y+1)*s->w + (x-1)], ea);
+             if(y != s->h -1)
+                buffer[(y+1)*s->w + (x)] = saturated_add(buffer[(y+1)*s->w + (x)], ea);
+             if(x != s->w - 1 || y != s->h -1)
+                buffer[(y+1)*s->w + (x+1)] = saturated_add(buffer[(y+1)*s->w + (x+1)], ea);
+        }
+    }
+
+    //store results back
+    for(y = 0; y < s->h; y++){
+        for(x = 0; x < s->w; x++){
+            //uint8_t px = buffer[y*s->w + x] == 0 ? 255 : 0;
+            uint8_t px = buffer[y*s->w + x];
+            putpixel(s, x, y, SDL_MapRGB(s->format, 255, px, px));
+
+        }
+    }
+}
+
 //ordered 8x8 dithering
 //stolen from https://gist.github.com/catastropher/bd8182d0547e7f5e8184
 void black_white_dither(SDL_Surface* s) {
@@ -785,8 +868,8 @@ void black_white_dither(SDL_Surface* s) {
       // Apply the ordered dither kernel
       uint16_t val = in + in * map[y % 8][x % 8] / 64;
       
-      // If >= 192 choose white, else choose black
-      if(val >= GAMMA_WHITE_CUTOFF) //TODO make this configurable
+      // If >= cutoff choose white, else choose black
+      if(val >= GAMMA_WHITE_CUTOFF) 
         val = 255;
       else
         val = 0;
@@ -889,7 +972,8 @@ void I_FinishUpdate (void)
 
     // dither if this option is set
     if(dither)
-        black_white_dither(argbbuffer);
+        // black_white_dither(argbbuffer);
+        floyd_steinberg_dither(argbbuffer);
 
     // Update the intermediate texture with the contents of the RGBA buffer.
 
@@ -1503,13 +1587,16 @@ void I_InitGraphics(void)
         fullscreen = true;
     }
 
-    if (aspect_ratio_correct == 1)
-    {
-        actualheight = SCREENHEIGHT_4_3;
-    }
-    else
-    {
-        actualheight = SCREENHEIGHT;
+    //allow lower size than actualheight
+    if(actualheight > SCREENHEIGHT){
+        if (aspect_ratio_correct == 1)
+        {
+            actualheight = SCREENHEIGHT_4_3;
+        }
+        else
+        {
+            actualheight = SCREENHEIGHT;
+        }
     }
 
     // Create the game window; this may switch graphic modes depending
