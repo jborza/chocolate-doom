@@ -17,5 +17,6 @@
 int serial_set_interface_attribs(int fd, int speed);
 void serial_set_mincount(int fd, int mcount);
 int serial_print(char* message, int length, int do_tcdrain);
+void serial_drain();
 
 #endif /* #ifndef __I_SERIAL__ */

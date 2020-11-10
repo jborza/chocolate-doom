@@ -50,8 +50,10 @@
 #include "z_zone.h"
 #include "i_serial.h"
 
-#define SERIAL_BUFFER_WIDTH 120
-#define SERIAL_BUFFER_HEIGHT 75
+#define SERIAL_BUFFER_WIDTH 240
+#define SERIAL_BUFFER_HEIGHT 150
+#define FRAME_SKIP 1
+#define DITHER_ORDERED
 
 // These are (1) the window (or the full screen) that our game is rendered to
 // and (2) the renderer that scales the texture (see below) into this window.
@@ -900,29 +902,23 @@ void black_white_dither(SDL_Surface* s) {
   }
 }
 
-int onetime = 0;
 int frame_counter = 0;
-#define FRAME_SKIP 2
+#define SERIAL_BUFFER_BYTES SERIAL_BUFFER_WIDTH/8
 void send_to_serial_screen(SDL_Surface* s){
-
-    if(onetime == 0){
-        fprintf(stderr, "send_to_serial_screen(width:%d height:%d bpp:%d)\n", s->w, s->h, s->format->BytesPerPixel);
-        onetime = 1;
-    }
     if(++frame_counter != FRAME_SKIP)
         return;
     frame_counter = 0;
     int x, y;
     uint8_t r, g, b;
     uint32_t pix;
-    uint8_t buf[15]; //120 pixel buffer
+    uint8_t buf[SERIAL_BUFFER_BYTES]; //pixel buffer
     uint8_t bit = 7;
-    for(y = 0; y < 120; ++y) {
-        memset(buf, 0, 15);     
-        for(x = 0; x < 120; ++x) {
-            int target_y = y < 75 ? y : 75;
+    for(y = 0; y < SERIAL_BUFFER_WIDTH; ++y) {
+        memset(buf, 0, SERIAL_BUFFER_BYTES);     
+        for(x = 0; x < SERIAL_BUFFER_WIDTH; ++x) {
+            int target_y = y < SERIAL_BUFFER_HEIGHT ? y : SERIAL_BUFFER_HEIGHT;
             pix = getpixel(s, x, target_y);
-            
+            //TODO we could start using the pixel format masks and retrieve the value that way for just one color
             SDL_GetRGB(pix, s->format, &r, &g, &b);
             //use G value for example, they will be the same
             if(g == 255)
@@ -933,9 +929,10 @@ void send_to_serial_screen(SDL_Surface* s){
             else
                 bit--;
         }
-        serial_print(buf,15,0);
+        serial_print(buf,SERIAL_BUFFER_BYTES,0);
     }
     fprintf(stderr, ".");      
+    // serial_drain();
 }
 
 //
@@ -1036,31 +1033,22 @@ void I_FinishUpdate (void)
     serial_rect.h = SERIAL_BUFFER_HEIGHT;
     SDL_BlitScaled(argbbuffer, &blit_rect, serialbuffer, &serial_rect);
     
-    #if 0
-    SDL_SaveBMP(argbbuffer, "_argbbuffer.bmp");
-    SDL_SaveBMP(serialbuffer, "_serialbuffer.bmp");
-    #endif
-    // dither if this option is set
-    //if(dither)
-    //    black_white_dither(argbbuffer);
-        // floyd_steinberg_dither(argbbuffer);
-
+    if(dither){
+#ifdef DITHER_ORDERED
     black_white_dither(serialbuffer);
-    // floyd_steinberg_dither(serialbuffer);
-    #if 0
-    SDL_SaveBMP(serialbuffer, "_serialbuffer_dithered.bmp");
-    #endif
-    
+#else
+    floyd_steinberg_dither(serialbuffer);
+#endif
+    }
 
     if(serial_out)
         send_to_serial_screen(serialbuffer);
 
-    // Update the intermediate texture with the contents of the RGBA buffer.
-
-    //blit back to argbuffer
+    //blit the scaled and dithered buffer back to argbuffer
     SDL_BlitScaled(serialbuffer, &serial_rect, argbbuffer, &blit_rect);
 
 
+    // Update the intermediate texture with the contents of the RGBA buffer.
     SDL_UpdateTexture(texture, NULL, argbbuffer->pixels, argbbuffer->pitch);
 
     // Make sure the pillarboxes are kept clear each frame.

@@ -85,6 +85,10 @@ int serial_print(char* message, int length, int do_tcdrain){
     return 0;
 }
 
+void serial_drain(){
+    tcdrain(serial_fd);
+}
+
 void serial_close(){
     close(serial_fd);
 }
