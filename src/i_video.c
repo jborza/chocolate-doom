@@ -48,6 +48,7 @@
 #include "v_video.h"
 #include "w_wad.h"
 #include "z_zone.h"
+#include "i_serial.h"
 
 // These are (1) the window (or the full screen) that our game is rendered to
 // and (2) the renderer that scales the texture (see below) into this window.
@@ -142,6 +143,9 @@ int vga_porch_flash = false;
 
 // Dithering option
 int dither = true;
+
+// print screen to serial port
+int serial_out = true;
 
 // Force software rendering, for systems which lack effective hardware
 // acceleration
@@ -791,6 +795,7 @@ void floyd_steinberg_dither(SDL_Surface *s){
     int8_t quant_error;
     int8_t ea, eb, ec, ed;
     float in;
+    uint8_t px; //target pixel value
     
     for(y = 0; y < s->h; y++){
         for(x = 0; x < s->w; x++){
@@ -828,15 +833,16 @@ void floyd_steinberg_dither(SDL_Surface *s){
         }
     }
 
+    SDL_LockSurface(s);
     //store results back
     for(y = 0; y < s->h; y++){
         for(x = 0; x < s->w; x++){
             //uint8_t px = buffer[y*s->w + x] == 0 ? 255 : 0;
-            uint8_t px = buffer[y*s->w + x];
-            putpixel(s, x, y, SDL_MapRGB(s->format, 255, px, px));
-
+            px = buffer[y*s->w + x];// == 0 ? 255 : 0;
+            putpixel(s, x, y, SDL_MapRGB(s->format, px, px, px));
         }
     }
+    SDL_UnlockSurface(s);
 }
 
 //ordered 8x8 dithering
@@ -844,6 +850,9 @@ void floyd_steinberg_dither(SDL_Surface *s){
 void black_white_dither(SDL_Surface* s) {
   int x, y;
   float in;
+  uint8_t r, g, b;
+  uint16_t val;
+  uint32_t pix;
   
   // Ordered dither kernel
   uint16_t map[8][8] = {
@@ -859,15 +868,14 @@ void black_white_dither(SDL_Surface* s) {
   
   for(y = 0; y < s->h; ++y) {
     for(x = 0; x < s->w; ++x) {
-      uint32_t pix = getpixel(s, x, y);
-      uint8_t r, g, b;
+      pix = getpixel(s, x, y);
       SDL_GetRGB(pix, s->format, &r, &g, &b);
       
       // Convert the pixel value to grayscale i.e. intensity
       in = .299f * r + .587f * g + .114f * b;
       
       // Apply the ordered dither kernel
-      uint16_t val = in + in * map[y % 8][x % 8] / 64;
+      val = in + in * map[y % 8][x % 8] / 64;
       
       // If >= cutoff choose white, else choose black
       if(val >= GAMMA_WHITE_CUTOFF) 
@@ -876,9 +884,47 @@ void black_white_dither(SDL_Surface* s) {
         val = 0;
       
       // Put the pixel back in the image
-      putpixel(s, x, y, SDL_MapRGB(s->format, val, val, val));
+      putpixel(s, x, y, SDL_MapRGB(s->format, 255, val, val));
     }
   }
+}
+
+int onetime = 0;
+int frame_counter = 0;
+void send_to_serial_screen(SDL_Surface* s){
+
+    if(onetime == 0){
+        fprintf(stderr, "send_to_serial_screen(width:%d height:%d bpp:%d)\n", s->w, s->h, s->format->BytesPerPixel);
+        onetime = 1;
+    }
+    if(++frame_counter != 50)
+        return;
+    frame_counter = 0;
+    int x, y;
+    uint8_t r, g, b;
+    uint32_t pix;
+    uint8_t buf[15]; //120 pixel buffer
+    uint8_t bit = 7;
+    for(y = 0; y < 120; ++y) {
+        memset(buf, 0, 15);     
+        //poor man's X scaling   
+        for(x = 0; x < 120 /*s->w*/; ++x) {
+            int target_y = y < 100 ? y * 2 : 199;
+            pix = getpixel(s, x*2, target_y);
+            
+            SDL_GetRGB(pix, s->format, &r, &g, &b);
+            //use G value for example, they will be the same
+            if(g == 255)
+               buf[x >> 3] |= (1 << bit);
+
+            if(bit == 0)
+                bit = 7;
+            else
+                bit--;
+        }
+        serial_print(buf,15);
+    }
+    fprintf(stderr, ".");      
 }
 
 //
@@ -973,8 +1019,11 @@ void I_FinishUpdate (void)
 
     // dither if this option is set
     if(dither)
-        // black_white_dither(argbbuffer);
-        floyd_steinberg_dither(argbbuffer);
+        black_white_dither(argbbuffer);
+        //floyd_steinberg_dither(argbbuffer);
+
+    if(serial_out)
+        send_to_serial_screen(argbbuffer);
 
     // Update the intermediate texture with the contents of the RGBA buffer.
 
