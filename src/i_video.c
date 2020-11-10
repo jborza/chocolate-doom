@@ -50,6 +50,9 @@
 #include "z_zone.h"
 #include "i_serial.h"
 
+#define SERIAL_BUFFER_WIDTH 120
+#define SERIAL_BUFFER_HEIGHT 75
+
 // These are (1) the window (or the full screen) that our game is rendered to
 // and (2) the renderer that scales the texture (see below) into this window.
 
@@ -69,6 +72,7 @@ static const char *window_title = "";
 
 static SDL_Surface *screenbuffer = NULL;
 static SDL_Surface *argbbuffer = NULL;
+static SDL_Surface *serialbuffer = NULL;
 static SDL_Texture *texture = NULL;
 static SDL_Texture *texture_upscaled = NULL;
 
@@ -796,50 +800,57 @@ void floyd_steinberg_dither(SDL_Surface *s){
     int8_t ea, eb, ec, ed;
     float in;
     uint8_t px; //target pixel value
+
+    int w,h;
+    w = s->w;
+    h = s->h;
     
-    for(y = 0; y < s->h; y++){
-        for(x = 0; x < s->w; x++){
+    for(y = 0; y < h; y++){
+        for(x = 0; x < w; x++){
             uint32_t pix = getpixel(s, x, y);
             SDL_GetRGB(pix, s->format, &r, &g, &b);
             // Convert the pixel value to grayscale i.e. intensity
             in = .299f * r + .587f * g + .114f * b;         
             oldpixel = (uint8_t)(in * 255);
             //store in the intermediate array
-            buffer[y*s->w + x] = oldpixel;
+            buffer[y*w + x] = oldpixel;
         }
     }
 
     //perform dithering
-    for(y = 0; y < s->h; y++){
-        for(x = 0; x < s->w; x++){
-            oldpixel =  buffer[y*s->w + x];
+    for(y = 0; y < h; y++){
+        for(x = 0; x < w; x++){
+            oldpixel =  buffer[y*w + x];
             newpixel = oldpixel > 127 ? 0 : 255;
             quant_error = oldpixel > 127 ? oldpixel - 255 : oldpixel;
-            buffer[y*s->w + x] = newpixel;
+            buffer[y*w + x] = newpixel;
 
             ea = (quant_error * 7) / 16;
             eb = (quant_error * 1) / 16;
             ec = (quant_error * 5) / 16;
             ed = (quant_error * 3) / 16;
             
-            if(x != s->w - 1)
-                buffer[y*s->w + (x+1)] = saturated_add(buffer[y*s->w + (x+1)], ea);
-             if(x != 0 || y != s->h -1)
-                buffer[(y+1)*s->w + (x-1)] = saturated_add(buffer[(y+1)*s->w + (x-1)], eb);
-             if(y != s->h -1)
-                buffer[(y+1)*s->w + (x)] = saturated_add(buffer[(y+1)*s->w + (x)], ec);
-             if(x != s->w - 1 || y != s->h -1)
-                buffer[(y+1)*s->w + (x+1)] = saturated_add(buffer[(y+1)*s->w + (x+1)], ed);
+            if(x != w - 1)
+                buffer[y*w + (x+1)] = saturated_add(buffer[y*w + (x+1)], ea);
+             if(x != 0 || y != h -1)
+                buffer[(y+1)*w + (x-1)] = saturated_add(buffer[(y+1)*w + (x-1)], eb);
+             if(y != h -1)
+                buffer[(y+1)*w + (x)] = saturated_add(buffer[(y+1)*w + (x)], ec);
+             if(x != w - 1 || y != h -1)
+                buffer[(y+1)*w + (x+1)] = saturated_add(buffer[(y+1)*w + (x+1)], ed);
         }
     }
 
+    uint32_t black = SDL_MapRGB(s->format, 0,0,0);
+    uint32_t white = SDL_MapRGB(s->format, 255,255,255);
+
     SDL_LockSurface(s);
     //store results back
-    for(y = 0; y < s->h; y++){
-        for(x = 0; x < s->w; x++){
-            //uint8_t px = buffer[y*s->w + x] == 0 ? 255 : 0;
-            px = buffer[y*s->w + x];// == 0 ? 255 : 0;
-            putpixel(s, x, y, SDL_MapRGB(s->format, px, px, px));
+    for(y = 0; y < h; y++){
+        for(x = 0; x < w; x++){
+            //uint8_t px = buffer[y*w + x] == 0 ? 255 : 0;
+            //px = buffer[y*w + x];// == 0 ? 255 : 0;
+            putpixel(s, x, y, buffer[y*w + x] == 0 ? black : white);//  SDL_MapRGB(format, px, px, px));
         }
     }
     SDL_UnlockSurface(s);
@@ -884,7 +895,7 @@ void black_white_dither(SDL_Surface* s) {
         val = 0;
       
       // Put the pixel back in the image
-      putpixel(s, x, y, SDL_MapRGB(s->format, 255, val, val));
+      putpixel(s, x, y, SDL_MapRGB(s->format, val, val, val));
     }
   }
 }
@@ -909,8 +920,8 @@ void send_to_serial_screen(SDL_Surface* s){
         memset(buf, 0, 15);     
         //poor man's X scaling   
         for(x = 0; x < 120 /*s->w*/; ++x) {
-            int target_y = y < 100 ? y * 2 : 199;
-            pix = getpixel(s, x*2, target_y);
+            int target_y = y < 75 ? y : 75;
+            pix = getpixel(s, x, target_y);
             
             SDL_GetRGB(pix, s->format, &r, &g, &b);
             //use G value for example, they will be the same
@@ -1017,15 +1028,36 @@ void I_FinishUpdate (void)
 
     SDL_LowerBlit(screenbuffer, &blit_rect, argbbuffer, &blit_rect);
 
+    //scaled blit from argbbuffer to serial output buffer
+    SDL_Rect serial_rect;
+    serial_rect.x = 0;
+    serial_rect.y = 0;
+    serial_rect.w = SERIAL_BUFFER_WIDTH;
+    serial_rect.h = SERIAL_BUFFER_HEIGHT;
+    SDL_BlitScaled(argbbuffer, &blit_rect, serialbuffer, &serial_rect);
+    
+    SDL_SaveBMP(argbbuffer, "_argbbuffer.bmp");
+    SDL_SaveBMP(serialbuffer, "_serialbuffer.bmp");
+
     // dither if this option is set
-    if(dither)
-        black_white_dither(argbbuffer);
-        //floyd_steinberg_dither(argbbuffer);
+    //if(dither)
+    //    black_white_dither(argbbuffer);
+        // floyd_steinberg_dither(argbbuffer);
+
+    black_white_dither(serialbuffer);
+    // floyd_steinberg_dither(serialbuffer);
+    SDL_SaveBMP(serialbuffer, "_serialbuffer_dithered.bmp");
+
+    
 
     if(serial_out)
-        send_to_serial_screen(argbbuffer);
+        send_to_serial_screen(serialbuffer);
 
     // Update the intermediate texture with the contents of the RGBA buffer.
+
+    //blit back to argbuffer
+    SDL_BlitScaled(serialbuffer, &serial_rect, argbbuffer, &blit_rect);
+
 
     SDL_UpdateTexture(texture, NULL, argbbuffer->pixels, argbbuffer->pitch);
 
@@ -1038,6 +1070,12 @@ void I_FinishUpdate (void)
 
     SDL_SetRenderTarget(renderer, texture_upscaled);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
+
+    //perform dithering on the upscaled texture
+    // if(dither)
+    // {
+    //     floyd_steinberg_dither_texture(texture_upscaled);
+    // }
 
     // Finally, render this upscaled texture to screen using linear scaling.
 
@@ -1457,7 +1495,7 @@ static void SetVideoMode(void)
 
         pixel_format = SDL_GetWindowPixelFormat(screen);
 
-        SDL_SetWindowMinimumSize(screen, SCREENWIDTH, actualheight);
+        SDL_SetWindowMinimumSize(screen, window_width, actualheight);
 
         I_InitWindowTitle();
         I_InitWindowIcon();
@@ -1575,6 +1613,20 @@ static void SetVideoMode(void)
         SDL_FillRect(argbbuffer, NULL, 0);
     }
 
+    if(serialbuffer != NULL)
+    {
+        SDL_FreeSurface(serialbuffer);
+        serialbuffer = NULL;
+    }
+    if(serialbuffer == NULL){
+        SDL_PixelFormatEnumToMasks(pixel_format, &bpp,
+                                   &rmask, &gmask, &bmask, &amask);
+        serialbuffer = SDL_CreateRGBSurface(0,
+                                          SERIAL_BUFFER_WIDTH, SERIAL_BUFFER_HEIGHT, bpp,
+                                          rmask, gmask, bmask, amask);
+        SDL_FillRect(serialbuffer, NULL, 0);
+    }
+
     if (texture != NULL)
     {
         SDL_DestroyTexture(texture);
@@ -1638,6 +1690,8 @@ void I_InitGraphics(void)
     }
 
     //allow lower size than actualheight
+    if(actualheight == 0)
+        actualheight = window_height;
     if(actualheight > SCREENHEIGHT){
         if (aspect_ratio_correct == 1)
         {
