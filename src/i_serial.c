@@ -64,7 +64,7 @@ int serial_init(){
     return 0;
 }
 
-int serial_print(char* message, int length){
+int serial_print(char* message, int length, int do_tcdrain){
     int wlen;
     if(serial_fd < 0)
     {
@@ -79,62 +79,12 @@ int serial_print(char* message, int length){
     if (wlen != length) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
-    tcdrain(serial_fd);    /* delay for output */
+    if(do_tcdrain){
+        tcdrain(serial_fd);    /* delay for output */
+    }
     return 0;
 }
 
 void serial_close(){
     close(serial_fd);
 }
-
-
-// int main()
-// {
-//     char *portname = TERMINAL;
-//     int fd;
-//     int wlen;
-//     char *xstr = "Hello Buddy This is a long text spanning multiple lines!\n";
-//     int xlen = strlen(xstr);
-
-//     fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
-//     if (fd < 0) {
-//         printf("Error opening %s: %s\n", portname, strerror(errno));
-//         return -1;
-//     }
-//     /*baudrate as defined, 8 bits, no parity, 1 stop bit */
-//     set_interface_attribs(fd, BAUDRATE);
-//     //set_mincount(fd, 0);                /* set to pure timed read */
-
-//     /* simple output */
-//     wlen = write(fd, xstr, xlen);
-//     if (wlen != xlen) {
-//         printf("Error from write: %d, %d\n", wlen, errno);
-//     }
-//     tcdrain(fd);    /* delay for output */
-
-
-//     /* simple noncanonical input */
-//     do {
-//         unsigned char buf[80];
-//         int rdlen;
-
-//         rdlen = read(fd, buf, sizeof(buf) - 1);
-//         if (rdlen > 0) {
-// #ifdef DISPLAY_STRING
-//             buf[rdlen] = 0;
-//             printf("Read %d: \"%s\"\n", rdlen, buf);
-// #else /* display hex */
-//             unsigned char   *p;
-//             printf("Read %d:", rdlen);
-//             for (p = buf; rdlen-- > 0; p++)
-//                 printf(" 0x%x", *p);
-//             printf("\n");
-// #endif
-//         } else if (rdlen < 0) {
-//             printf("Error from read: %d: %s\n", rdlen, strerror(errno));
-//         } else {  /* rdlen == 0 */
-//             printf("Timeout from read\n");
-//         }               
-//         /* repeat read to get full message */
-//     } while (1);
-// }

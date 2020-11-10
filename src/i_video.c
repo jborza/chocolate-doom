@@ -908,7 +908,7 @@ void send_to_serial_screen(SDL_Surface* s){
         fprintf(stderr, "send_to_serial_screen(width:%d height:%d bpp:%d)\n", s->w, s->h, s->format->BytesPerPixel);
         onetime = 1;
     }
-    if(++frame_counter != 50)
+    if(++frame_counter != 4)
         return;
     frame_counter = 0;
     int x, y;
@@ -918,8 +918,7 @@ void send_to_serial_screen(SDL_Surface* s){
     uint8_t bit = 7;
     for(y = 0; y < 120; ++y) {
         memset(buf, 0, 15);     
-        //poor man's X scaling   
-        for(x = 0; x < 120 /*s->w*/; ++x) {
+        for(x = 0; x < 120; ++x) {
             int target_y = y < 75 ? y : 75;
             pix = getpixel(s, x, target_y);
             
@@ -933,7 +932,7 @@ void send_to_serial_screen(SDL_Surface* s){
             else
                 bit--;
         }
-        serial_print(buf,15);
+        serial_print(buf,15,0);
     }
     fprintf(stderr, ".");      
 }
@@ -1036,9 +1035,10 @@ void I_FinishUpdate (void)
     serial_rect.h = SERIAL_BUFFER_HEIGHT;
     SDL_BlitScaled(argbbuffer, &blit_rect, serialbuffer, &serial_rect);
     
+    #if 0
     SDL_SaveBMP(argbbuffer, "_argbbuffer.bmp");
     SDL_SaveBMP(serialbuffer, "_serialbuffer.bmp");
-
+    #endif
     // dither if this option is set
     //if(dither)
     //    black_white_dither(argbbuffer);
@@ -1046,8 +1046,9 @@ void I_FinishUpdate (void)
 
     black_white_dither(serialbuffer);
     // floyd_steinberg_dither(serialbuffer);
+    #if 0
     SDL_SaveBMP(serialbuffer, "_serialbuffer_dithered.bmp");
-
+    #endif
     
 
     if(serial_out)
