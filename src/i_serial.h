@@ -11,7 +11,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define BAUDRATE B115200
+#define BAUDRATE B500000
 #define DISPLAY_STRING
 
 int serial_set_interface_attribs(int fd, int speed);

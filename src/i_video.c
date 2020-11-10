@@ -902,13 +902,14 @@ void black_white_dither(SDL_Surface* s) {
 
 int onetime = 0;
 int frame_counter = 0;
+#define FRAME_SKIP 2
 void send_to_serial_screen(SDL_Surface* s){
 
     if(onetime == 0){
         fprintf(stderr, "send_to_serial_screen(width:%d height:%d bpp:%d)\n", s->w, s->h, s->format->BytesPerPixel);
         onetime = 1;
     }
-    if(++frame_counter != 4)
+    if(++frame_counter != FRAME_SKIP)
         return;
     frame_counter = 0;
     int x, y;
