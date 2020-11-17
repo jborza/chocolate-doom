@@ -52,8 +52,8 @@
 
 #define SERIAL_BUFFER_WIDTH 240
 #define SERIAL_BUFFER_HEIGHT 150
-#define FRAME_SKIP 1
-#define DITHER_ORDERED
+#define FRAME_SKIP 0
+//#define DITHER_ORDERED
 
 // These are (1) the window (or the full screen) that our game is rendered to
 // and (2) the renderer that scales the texture (see below) into this window.
@@ -905,7 +905,7 @@ void black_white_dither(SDL_Surface* s) {
 int frame_counter = 0;
 #define SERIAL_BUFFER_BYTES SERIAL_BUFFER_WIDTH/8
 void send_to_serial_screen(SDL_Surface* s){
-    if(++frame_counter != FRAME_SKIP)
+    if(FRAME_SKIP > 0 && ++frame_counter != FRAME_SKIP)
         return;
     frame_counter = 0;
     int x, y;
@@ -913,7 +913,7 @@ void send_to_serial_screen(SDL_Surface* s){
     uint32_t pix;
     uint8_t buf[SERIAL_BUFFER_BYTES]; //pixel buffer
     uint8_t bit = 7;
-    for(y = 0; y < SERIAL_BUFFER_WIDTH; ++y) {
+    for(y = 0; y < SERIAL_BUFFER_HEIGHT; ++y) {
         memset(buf, 0, SERIAL_BUFFER_BYTES);     
         for(x = 0; x < SERIAL_BUFFER_WIDTH; ++x) {
             int target_y = y < SERIAL_BUFFER_HEIGHT ? y : SERIAL_BUFFER_HEIGHT;
