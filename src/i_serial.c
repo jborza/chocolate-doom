@@ -64,7 +64,7 @@ int serial_init(){
     return 0;
 }
 
-int serial_print(char* message, int length, int do_tcdrain){
+int serial_print(uint8_t* message, int length, int do_tcdrain){
     int wlen;
     if(serial_fd < 0)
     {
